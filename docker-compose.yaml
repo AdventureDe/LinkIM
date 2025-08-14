@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:14.0
+    container_name: postgres-container
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: 12345678
+      POSTGRES_USER: hassin
+      POSTGRES_DB: project2
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - "D:/docker-postgresql:/var/lib/postgresql/data"
+
+  redis:
+    image: redis:7.2
+    container_name: redis-container
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "12345678"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - "D:/docker-redis:/data"
+    environment:
+      TZ: Asia/Shanghai
+
+#   user:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: user-container
+#     restart: unless-stopped
+#     ports:
+#       - "10008:10008"
+#     depends_on:
+#       - postgres
+#       - redis
+#     environment:
+#       - PORT=10008
+#       - DB_HOST=postgres-container
+#       - DB_PORT=5432
+#       - DB_USER=hassin
+#       - DB_PASSWORD=12345678
+#       - DB_NAME=project2
+#       - REDIS_HOST=redis-container
+#       - REDIS_PORT=6379
+#     networks:
+#       - backend-network
+
+# networks:
+#   backend-network:
