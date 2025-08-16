@@ -22,6 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
+	db = db.Debug()
 	defer repo.CloseDB()
 
 	rdb, err := repo.InitRedis()
@@ -41,6 +42,7 @@ func main() {
 	userService := service.NewUserService(userRepo, userRepoRedis)
 	userHandler := handler.NewUserHandler(userService)
 	router.SetupRouter(r, userHandler)
+	router.SetupFriendRouter(r, userHandler)
 	userServiceWithRedis := service.NewVerificationService(userRepoRedis)
 	userHandlerWithRedis := handler.NewVerificationHandler(userServiceWithRedis)
 	router.SetupVerificationRouter(r, userHandlerWithRedis)

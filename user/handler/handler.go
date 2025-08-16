@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"user/repo"
 	"user/service"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,8 @@ func NewVerificationHandler(s *service.VerificationService) *VerificationHandler
 	return &VerificationHandler{service: s}
 }
 
+/* ----------------------------------------------------- */
+// 验证码部分
 func (h *VerificationHandler) SendCode(c *gin.Context) {
 	var input struct {
 		Phone          string `json:"phoneNumber" binding:"required"`
@@ -73,6 +76,8 @@ func (h *VerificationHandler) VerifyCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "code verified"})
 }
 
+/* ----------------------------------------------------- */
+// 个人信息管理部分
 func (h *UserHandler) Register(c *gin.Context) {
 	var input struct {
 		VerifyCode string `json:"verifyCode" binding:"required"`
@@ -182,6 +187,7 @@ func (h *UserHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "logout success"})
 }
 
+// TODO: 已经将Session存入了redis，可以使用session中的token，进行 Authorization: Bearer <token>
 func (h *UserHandler) UpdatePhone(c *gin.Context) {
 	var input struct {
 		UserID      int64  `json:"userID" binding:"required"`
@@ -301,4 +307,313 @@ func (h *UserHandler) UpdateSignature(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "signature updated"})
+}
+
+/* --------------------------------------------------------------- */
+// 好友管理部分
+// 添加好友
+func (h *UserHandler) CreateFriendShip(c *gin.Context) {
+	var input struct {
+		UserID         int64  `json:"user_id" binding:"required"`
+		Platform       int    `json:"platform" binding:"required,min=1"`
+		FriendID       int64  `json:"friend_id" binding:"required"`
+		RequestMessage string `json:"request_message" binding:"omitempty,max=500"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.CreateFriendShip(c.Request.Context(), input.UserID, input.FriendID, input.RequestMessage); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "message has present",
+	})
+}
+
+// 接受好友请求
+func (h *UserHandler) AcceptFriend(c *gin.Context) {
+	var input struct {
+		UserID   int64  `json:"user_id" binding:"required"`
+		Platform int    `json:"platform" binding:"required,min=1"`
+		FriendID int64  `json:"friend_id" binding:"required"`
+		Statusp  string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.AcceptFriend(c.Request.Context(), input.UserID, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "accept the friend",
+	})
+}
+
+// 拒绝好友请求
+func (h *UserHandler) RejectFriend(c *gin.Context) {
+	var input struct {
+		UserID   int64  `json:"user_id" binding:"required"`
+		Platform int    `json:"platform" binding:"required,min=1"`
+		FriendID int64  `json:"friend_id" binding:"required"`
+		Statusp  string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.RejectFriend(c.Request.Context(), input.UserID, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "reject the friend",
+	})
+}
+
+// 获取好友列表
+func (h *UserHandler) GetFriendLists(c *gin.Context) {
+	var input struct {
+		UserID   int64 `form:"user_id" binding:"required"`
+		Platform int   `form:"platform" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindQuery(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	lists, err := h.service.GetFriendLists(c.Request.Context(), input.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "get lists",
+		"detail":  lists,
+	})
+}
+
+// 删除好友
+func (h *UserHandler) DelFriend(c *gin.Context) {
+	var input struct {
+		UserID   int64 `json:"user_id" binding:"required"`
+		Platform int   `json:"platform" binding:"required,min=1"`
+		FriendID int64 `json:"friend_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.DelFriend(c.Request.Context(), input.UserID, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "delete ok",
+	})
+}
+
+// 创建关系 针对好友
+func (h *UserHandler) CreateRelationShip(c *gin.Context) {
+	var input struct {
+		UserID           int64  `json:"user_id" binding:"required"`
+		Platform         int    `json:"platform" binding:"required,min=1"`
+		RelationShipName string `json:"relation_ship_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.CreateRelationShip(c.Request.Context(), input.UserID, input.RelationShipName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "create relationShip ok",
+	})
+}
+
+// 删除关系 针对好友
+func (h *UserHandler) DelRelationShip(c *gin.Context) {
+	var input struct {
+		UserID           int64  `json:"user_id" binding:"required"`
+		Platform         int    `json:"platform" binding:"required,min=1"`
+		RelationShipName string `json:"relation_ship_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.DelRelationShip(c.Request.Context(), input.UserID, input.RelationShipName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "Delete relationShip ok",
+	})
+}
+
+// 获取所有以及创建了的关系
+func (h *UserHandler) GetAllRelationShips(c *gin.Context) {
+	var input struct {
+		UserID   int64 `form:"user_id" binding:"required"`
+		Platform int   `form:"platform" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindQuery(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	var relationShips []string
+	var err error
+	if relationShips, err = h.service.GetAllRelationShips(c.Request.Context(), input.UserID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "load relationships ok",
+		"detail":  relationShips,
+	})
+}
+
+// 添加好友到已经创建了的关系
+func (h *UserHandler) AddFriendtoRelationShip(c *gin.Context) {
+	var input struct {
+		UserID           int64  `json:"user_id" binding:"required"`
+		Platform         int    `json:"platform" binding:"required,min=1"`
+		RelationShipName string `json:"relation_ship_name" binding:"required"`
+		FriendID         int64  `json:"friend_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.AddFriendToRelationShip(c.Request.Context(), input.UserID, input.RelationShipName, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "add friend to relationShip ok",
+	})
+}
+
+// 删除好友从已经创建了的关系
+func (h *UserHandler) DelFriendFromRelationShip(c *gin.Context) {
+	var input struct {
+		UserID           int64  `json:"user_id" binding:"required"`
+		Platform         int    `json:"platform" binding:"required,min=1"`
+		RelationShipName string `json:"relation_ship_name" binding:"required"`
+		FriendID         int64  `json:"friend_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.DelFriendFromRelationShip(c.Request.Context(), input.UserID, input.RelationShipName, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "delete friend from relationship ok",
+	})
+}
+
+// 获取好友信息从已经创建了的关系
+func (h *UserHandler) GetFriendsInfoFromRelationShip(c *gin.Context) {
+	var input struct {
+		UserID           int64  `json:"user_id" binding:"required"`
+		Platform         int    `json:"platform" binding:"required,min=1"`
+		RelationShipName string `json:"relation_ship_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	friendsInfo, err := h.service.GetFriendsInfoFromRelationShip(c.Request.Context(), input.UserID, input.RelationShipName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "get all friend's info",
+		"detail":  friendsInfo,
+	})
+}
+
+// 拉黑
+func (h *UserHandler) BlockaFriend(c *gin.Context) {
+	var input struct {
+		UserID   int64 `json:"user_id" binding:"required"`
+		Platform int   `json:"platform" binding:"required,min=1"`
+		FriendID int64 `json:"friend_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.BlockFriend(c.Request.Context(), input.UserID, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success blocked",
+	})
+}
+
+// 取消拉黑
+func (h *UserHandler) UnblockaFriend(c *gin.Context) {
+	var input struct {
+		UserID   int64 `json:"user_id" binding:"required"`
+		Platform int   `json:"platform" binding:"required,min=1"`
+		FriendID int64 `json:"friend_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	if err := h.service.UnblockFriend(c.Request.Context(), input.UserID, input.FriendID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success unblocked",
+	})
+}
+
+// 获取
+func (h *UserHandler) GetBlockedFriends(c *gin.Context) {
+	var input struct {
+		UserID   int64 `form:"user_id" binding:"required"`
+		Platform int   `form:"platform" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindQuery(&input); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	var info []*repo.User
+	info, err := h.service.GetBlockedFriends(c.Request.Context(), input.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success unblocked",
+		"detail":  info,
+	})
 }
