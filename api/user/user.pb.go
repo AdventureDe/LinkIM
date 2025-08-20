@@ -183,7 +183,7 @@ const file_api_user_user_proto_rawDesc = "" +
 	"\x14GetUserInfosResponse\x12$\n" +
 	"\x05users\x18\x01 \x03(\v2\x0e.user.UserInfoR\x05users2T\n" +
 	"\vUserService\x12E\n" +
-	"\fGetUserInfos\x12\x19.user.GetUserInfosRequest\x1a\x1a.user.GetUserInfosResponseB\x11Z\x0fapi/user;userpbb\x06proto3"
+	"\fGetUserInfos\x12\x19.user.GetUserInfosRequest\x1a\x1a.user.GetUserInfosResponseB1Z/github.com/AdventureDe/tempName/api/user;userpbb\x06proto3"
 
 var (
 	file_api_user_user_proto_rawDescOnce sync.Once
