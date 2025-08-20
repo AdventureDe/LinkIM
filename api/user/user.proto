@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "api/user;userpb";
+
+
+service UserService {
+  // 批量获取用户信息
+  rpc GetUserInfos(GetUserInfosRequest) returns (GetUserInfosResponse);
+}
+
+message GetUserInfosRequest {
+  repeated int64 user_ids = 1;
+}
+
+message UserInfo {
+  int64 user_id = 1;
+  string nickname = 2;
+  string avatar = 3;
+}
+
+message GetUserInfosResponse {
+  repeated UserInfo users = 1;
+}

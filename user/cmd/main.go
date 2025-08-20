@@ -39,6 +39,7 @@ func main() {
 	// 初始化仓库和服务
 	userRepo := repo.NewUserRepo(db)
 	userRepoRedis := repo.NewUserRedis(rdb)
+	//------
 	userService := service.NewUserService(userRepo, userRepoRedis)
 	userHandler := handler.NewUserHandler(userService)
 	router.SetupRouter(r, userHandler)
