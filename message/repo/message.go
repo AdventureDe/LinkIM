@@ -3,11 +3,13 @@ package repo
 import (
 	"context"
 	"errors"
-	"message/repo/model"
+	"log"
 	"time"
 
+	"github.com/AdventureDe/tempName/message/repo/model"
+
+	userpb "github.com/AdventureDe/tempName/api/user"
 	"gorm.io/gorm"
-	"github.com/AdventureDe/tempName/api/user"	
 )
 
 // 会话消息返回结构
@@ -47,15 +49,20 @@ type MessageRepo interface {
 	UnWithdrawMessage(ctx context.Context, senderID int64, targetID int64,
 		messageID int64, newtext string) (lastMessageID int64, err error)
 	UpdateUnread(ctx context.Context, userID, threadID int64) error
+	GetConversationsFromDB(ctx context.Context, userID int64) ([]*DBConversation, error)
 	GetConversations(ctx context.Context, userID int64) ([]*ConversationWithUser, error)
 }
 
 type messageRepo struct {
-	db *gorm.DB
+	db         *gorm.DB
+	userClient userpb.UserServiceClient
 }
 
-func NewMessageRepo(db *gorm.DB) MessageRepo {
-	return &messageRepo{db: db}
+func NewMessageRepo(db *gorm.DB, m *messageService) MessageRepo {
+	return &messageRepo{
+		db:         db,
+		userClient: m.userClient,
+	}
 }
 
 func (r *messageRepo) SendMessageToSingle(ctx context.Context, senderID int64, targetID int64, text string) (lastMsgId *int64, err error) {
@@ -202,47 +209,46 @@ func (r *messageRepo) WithdrawMessage(ctx context.Context, senderID int64, targe
 	return
 }
 
-func (r *messageRepo) UnWithdrawMessage(ctx context.Context, senderID int64, targetID int64,
-	messageID int64, newtext string) (lastMessageID int64, err error) {
+func (r *messageRepo) UnWithdrawMessage(ctx context.Context, senderID, targetID, messageID int64, newtext string) (lastMessageID int64, err error) {
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var thread model.Thread
 		if err := tx.Where("(peer_a = ? AND peer_b = ?) OR (peer_a = ? AND peer_b = ?)",
-			senderID, targetID, targetID, senderID).
-			First(&thread).Error; err != nil {
+			senderID, targetID, targetID, senderID).First(&thread).Error; err != nil {
 			return err
 		}
-		// 查找要撤回的消息
+
 		var message model.Message
-		// 保证安全性
 		if err := tx.Where("thread_id = ? AND sender_id = ? AND id = ?", thread.ID, senderID, messageID).
 			First(&message).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.Message{}).
-			Where("id = ?", messageID).
-			Update("content", newtext).
-			Update("is_withdrawed", true).Error; err != nil {
+
+		if err := tx.Model(&model.Message{}).Where("id = ?", messageID).
+			Updates(map[string]interface{}{ //批量更新消息一次完成
+				"content":       newtext,
+				"is_withdrawed": false,
+			}).Error; err != nil {
 			return err
 		}
 
-		for _, userID := range []int64{senderID, targetID} {
-			var lastMsg model.Message
-			err := tx.Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
-				Order("is DESC").
-				First(&lastMsg).Error
-			if err != nil {
-				return err
-			}
+		var lastMsg model.Message
+		err := tx.Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
+			Order("id DESC").First(&lastMsg).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		// 处理了没有未撤回消息的情况
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			lastMessageID = lastMsg.ID
-			// 更新每个用户的会话
-			err = tx.Model(&model.Conversation{}).
+		}
+
+		for _, userID := range []int64{senderID, targetID} {
+			if err := tx.Model(&model.Conversation{}).
 				Where("owner_id = ? AND thread_id = ?", userID, thread.ID).
-				Update("last_message_id", lastMsg.ID).Error
-			if err != nil {
+				Update("last_message_id", lastMessageID).Error; err != nil {
 				return err
 			}
 		}
-
 		return nil
 	})
 	return
@@ -250,7 +256,7 @@ func (r *messageRepo) UnWithdrawMessage(ctx context.Context, senderID int64, tar
 
 func (r *messageRepo) GetConversationMessages(
 	ctx context.Context, senderID, targetID int64, lastMsgID int64, pageSize int) (*ConversationMessages, error) {
-	// 1. 查找单聊 thread
+	// 查找单聊 thread
 	var thread model.Thread
 	if err := r.db.WithContext(ctx).
 		Where("(peer_a = ? AND peer_b = ?) OR (peer_a = ? AND peer_b = ?)",
@@ -259,7 +265,7 @@ func (r *messageRepo) GetConversationMessages(
 		return nil, err
 	}
 
-	// 2. 查询分页消息
+	// 查询分页消息
 	var messages []*model.Message
 	db := r.db.WithContext(ctx).
 		Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
@@ -274,14 +280,14 @@ func (r *messageRepo) GetConversationMessages(
 		return nil, err
 	}
 
-	// 3. 判断是否还有更多历史消息
+	// 判断是否还有更多历史消息
 	hasMore := false
 	if len(messages) > pageSize {
 		hasMore = true
 		messages = messages[:pageSize]
 	}
 
-	// 4. 获取未读计数
+	// 获取未读计数
 	var conv model.Conversation
 	unreadCount := 0
 	if err := r.db.WithContext(ctx).
@@ -290,7 +296,7 @@ func (r *messageRepo) GetConversationMessages(
 		unreadCount = conv.UnreadCount
 	}
 
-	// 5. 返回封装结果
+	// 返回封装结果
 	return &ConversationMessages{
 		Thread:   &thread,
 		Messages: messages,
@@ -321,14 +327,73 @@ func (r *messageRepo) UpdateUnread(ctx context.Context, userID, threadID int64) 
 	})
 }
 
-func GetConversationsFromDB(ctx context.Context, userID int64) ([]*DBConversation, error) {
+func (r *messageRepo) GetConversationsFromDB(ctx context.Context, userID int64) ([]*DBConversation, error) {
+	var convs []*DBConversation
 
-	return nil, nil
+	// 1. 查询 Conversation + Thread
+	var conversations []model.Conversation
+	if err := r.db.WithContext(ctx).
+		Preload("Thread").
+		Where("owner_id = ? AND is_deleted = false", userID).
+		Order("updated_at DESC").
+		Find(&conversations).Error; err != nil {
+		return nil, err
+	}
+
+	// 2. 收集 LastMessageID
+	var msgIDs []int64
+	for _, c := range conversations {
+		if c.LastMessageID != nil {
+			msgIDs = append(msgIDs, *c.LastMessageID)
+		}
+	}
+
+	// 3. 批量查询消息
+	msgMap := make(map[int64]*model.Message)
+	if len(msgIDs) > 0 {
+		var msgs []model.Message
+		if err := r.db.WithContext(ctx).Where("id IN ?", msgIDs).Find(&msgs).Error; err != nil {
+			return nil, err
+		}
+		for _, m := range msgs {
+			msgMap[m.ID] = &m
+		}
+	}
+
+	// 4. 拼接 DBConversation
+	for _, c := range conversations {
+		peerID := int64(0)
+		if c.Thread.Type == 1 { // 单聊
+			if c.Thread.PeerA != nil && *c.Thread.PeerA != userID {
+				peerID = *c.Thread.PeerA
+			} else if c.Thread.PeerB != nil && *c.Thread.PeerB != userID {
+				peerID = *c.Thread.PeerB
+			}
+		} else if c.Thread.Type == 2 { // 群聊
+			if c.Thread.GroupID != nil {
+				peerID = *c.Thread.GroupID
+			}
+		}
+
+		var lastMsg *model.Message
+		if c.LastMessageID != nil {
+			lastMsg = msgMap[*c.LastMessageID]
+		}
+
+		convs = append(convs, &DBConversation{
+			ThreadID:    c.ThreadID,
+			PeerID:      peerID,
+			LastMessage: lastMsg,
+			UnreadCount: c.UnreadCount,
+		})
+	}
+
+	return convs, nil
 }
 
 func (r *messageRepo) GetConversations(ctx context.Context, userID int64) ([]*ConversationWithUser, error) {
 	// 1. 从数据库查会话
-	conversations, err := GetConversationsFromDB(ctx, userID)
+	conversations, err := r.GetConversationsFromDB(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +420,11 @@ func (r *messageRepo) GetConversations(ctx context.Context, userID int64) ([]*Co
 	// 4. 拼接返回
 	var result []*ConversationWithUser
 	for _, conv := range conversations {
-		u := userMap[conv.PeerID]
+		u, ok := userMap[conv.PeerID]
+		if !ok || u == nil {
+			log.Printf("user info not found for peerID=%d", conv.PeerID)
+			continue
+		}
 		result = append(result, &ConversationWithUser{
 			ThreadID:    conv.ThreadID,
 			LastMessage: conv.LastMessage,

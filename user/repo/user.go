@@ -6,7 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
-	"user/repo/model"
+
+	"github.com/AdventureDe/tempName/user/repo/model"
 
 	"gorm.io/gorm"
 )
@@ -40,7 +41,7 @@ type UserRepo interface {
 	UpdateNickName(ctx context.Context, userid int64, nickname string) error
 	UpdateSignature(ctx context.Context, userid int64, newSignature string) error
 	GetUserInfo(ctx context.Context, userid int64) (*User, error)
-
+	GetUserInfos(ctx context.Context, userid []int64) ([]User, error)
 	// Friend
 	CreateFriend(ctx context.Context, friendShip *model.Friendship) error
 	UpdateFriendStatus(ctx context.Context, userid int64, friendid int64, status model.Status) error
@@ -80,6 +81,19 @@ func (r *userRepo) GetUserInfo(ctx context.Context, userid int64) (*User, error)
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *userRepo) GetUserInfos(ctx context.Context, userid []int64) ([]User, error) {
+	if len(userid) == 0 {
+		return []User{}, nil
+	}
+
+	var user []User
+	if err := r.db.WithContext(ctx).Where("id IN ?", userid).Find(&user).Error; err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 func (r *userRepo) GetUserByUserPhone(ctx context.Context, phone string) (*User, error) {

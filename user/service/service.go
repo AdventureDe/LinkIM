@@ -7,9 +7,9 @@ import (
 	"math/rand"
 	"strconv"
 	"time"
-	"user/dto"
-	"user/repo"
-	"user/repo/model"
+	"github.com/AdventureDe/tempName/user/dto"
+	"github.com/AdventureDe/tempName/user/repo"
+	"github.com/AdventureDe/tempName/user/repo/model"
 
 	"github.com/golang-jwt/jwt/v5"
 )

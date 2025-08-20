@@ -20,7 +20,7 @@ var CorsConfig = cors.Config{
 
 func Load() *Config {
 	return &Config{
-		Port: 10008, // 默认端口
+		Port: 10009, // 默认端口
 	}
 }
 

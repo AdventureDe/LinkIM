@@ -2,12 +2,15 @@ package main
 
 import (
 	"log"
+	"net"
 
-	"user/config"
-	"user/handler"
-	"user/repo"
-	"user/router"
-	"user/service"
+	userpb "github.com/AdventureDe/tempName/api/user"
+	"github.com/AdventureDe/tempName/user/config"
+	"github.com/AdventureDe/tempName/user/handler"
+	"github.com/AdventureDe/tempName/user/repo"
+	"github.com/AdventureDe/tempName/user/router"
+	"github.com/AdventureDe/tempName/user/service"
+	"google.golang.org/grpc"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -30,6 +33,13 @@ func main() {
 		log.Fatalf("Failed to initialize Redis: %v", err)
 	}
 	defer repo.CloseRedis()
+
+	// grpc 服务器
+	lis, err := net.Listen("tcp", ":50051")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
 	// 创建Gin引擎
 	r := gin.Default()
 
@@ -47,6 +57,15 @@ func main() {
 	userServiceWithRedis := service.NewVerificationService(userRepoRedis)
 	userHandlerWithRedis := handler.NewVerificationHandler(userServiceWithRedis)
 	router.SetupVerificationRouter(r, userHandlerWithRedis)
+	// 初始化grpc
+	grpcServer := grpc.NewServer()
+	userServer := repo.NewUserServiceServer(userRepo) //放入repo
+	userpb.RegisterUserServiceServer(grpcServer, userServer)
+
+	log.Println("UserService gRPC listening on :50051")
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 
 	// 启动 HTTP 服务
 	log.Printf("User service started at http://localhost:%d", cfg.Port)

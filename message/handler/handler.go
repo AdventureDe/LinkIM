@@ -1,9 +1,11 @@
 package handler
 
 import (
-	"message/repo"
-	"message/service"
+	"log"
 	"net/http"
+
+	"github.com/AdventureDe/tempName/message/repo"
+	"github.com/AdventureDe/tempName/message/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -132,5 +134,33 @@ func (h *MessageHandler) UnWithdrawMessage(c *gin.Context) {
 		"code":      0,
 		"message":   "unwithdraw ok",
 		"lastMsgId": lastMsgId,
+	})
+}
+
+func (h *MessageHandler) GetConversations(c *gin.Context) {
+	var input struct {
+		UserId   int64 `gorm:"column:user_id" form:"user_id"`
+		Platform int   `gorm:"column:platform" form:"platform"`
+	}
+	if err := c.ShouldBindQuery(&input); err != nil {
+		c.JSON(502, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+	conversations, err := h.service.GetConversations(c.Request.Context(), input.UserId)
+
+	if err != nil {
+		log.Printf("GetConversations error: %v", err)
+		c.JSON(400, gin.H{"code": 1, "error": err.Error()})
+		return
+	}
+
+	if conversations == nil {
+		log.Printf("GetConversations error: %v", err)
+		c.JSON(400, gin.H{"code": 1, "error": "conversation is nil"})
+	}
+	c.JSON(200, gin.H{
+		"code":    0,
+		"message": "get conversations ok",
+		"detail":  conversations,
 	})
 }

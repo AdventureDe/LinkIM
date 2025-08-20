@@ -1,0 +1,13 @@
+# Proto 生成文件
+api/**/*.pb.go
+api/**/*.pb.gw.go
+
+# IDE / 编辑器临时文件
+.vscode/
+.idea/
+
+# 日志
+*.log
+
+# 编译输出
+bin/

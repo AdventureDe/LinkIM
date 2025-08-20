@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strconv"
 	"time"
-	"user/dto"
+	"github.com/AdventureDe/tempName/user/dto"
 
 	"github.com/go-redis/redis/v8"
 )

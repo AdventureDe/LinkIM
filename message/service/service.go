@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
-	"message/repo"
+
+	"github.com/AdventureDe/tempName/message/repo"
 )
 
 type MessageService struct {
@@ -50,4 +51,12 @@ func (s *MessageService) UnWithdrawMessage(ctx context.Context, senderid int64, 
 		return -1, fmt.Errorf("fail to unwithdraw this message:%d,error:%w", messageid, err)
 	}
 	return lastMsgID, nil
+}
+
+func (s *MessageService) GetConversations(ctx context.Context, userID int64) ([]*repo.ConversationWithUser, error) {
+	conversations, err := s.repo.GetConversations(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("fail to get conversations:%w", err)
+	}
+	return conversations, nil
 }

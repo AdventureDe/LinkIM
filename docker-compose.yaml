@@ -24,7 +24,25 @@ services:
       - "D:/docker-redis:/data"
     environment:
       TZ: Asia/Shanghai
+      
+  # user-service:
+  #   build:   
+  #     context: .  
+  #     dockerfile: user/Dockerfile
+  #   container_name: user-service
+  #   ports:
+  #     - "50051:50051"
+  #   restart: unless-stopped
 
+  # message-service:
+  #   build:   
+  #     context: .  
+  #     dockerfile: message/Dockerfile
+  #   container_name: message-service
+  #   depends_on:
+  #     - user-service
+  #   restart: unless-stopped
+    
 #   user:
 #     build:
 #       context: .

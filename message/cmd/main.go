@@ -2,11 +2,12 @@ package main
 
 import (
 	"log"
-	"message/config"
-	"message/handler"
-	"message/repo"
-	"message/router"
-	"message/service"
+
+	"github.com/AdventureDe/tempName/message/config"
+	"github.com/AdventureDe/tempName/message/handler"
+	"github.com/AdventureDe/tempName/message/repo"
+	"github.com/AdventureDe/tempName/message/router"
+	"github.com/AdventureDe/tempName/message/service"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -26,10 +27,17 @@ func main() {
 		log.Fatalf("Fail to initialize Redis:%v", err)
 	}
 	defer repo.CloseRedis()
+	//grpc
+	m, err := repo.NewMessageService("localhost:50051") //镜像需要改为user-service
+	if err != nil {
+		log.Fatalf("Fail to initialize Grpc:%v", err)
+	}
+	defer m.Close()
+
 	r := gin.Default()
 	r.Use(cors.New(config.CorsConfig))
 
-	messageRepo := repo.NewMessageRepo(db)
+	messageRepo := repo.NewMessageRepo(db, m)
 	messageRedis := repo.NewMessageRedis(rdb)
 	messageService := service.NewMessageService(messageRepo, messageRedis)
 	messageHandler := handler.NewMessageHandler(messageService)

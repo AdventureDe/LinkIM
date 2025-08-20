@@ -2,7 +2,7 @@ package repo
 
 import (
 	"log"
-	"message/repo/model"
+	"github.com/AdventureDe/tempName/message/repo/model"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
