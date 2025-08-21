@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/AdventureDe/tempName/user/repo/model"
+	"github.com/AdventureDe/LinkIM/user/repo/model"
 
 	"gorm.io/gorm"
 )

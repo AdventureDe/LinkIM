@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 
-	"github.com/AdventureDe/tempName/group/config"
-	"github.com/AdventureDe/tempName/group/handler"
-	"github.com/AdventureDe/tempName/group/repo"
-	"github.com/AdventureDe/tempName/group/router"
-	"github.com/AdventureDe/tempName/group/service"
+	"github.com/AdventureDe/LinkIM/group/config"
+	"github.com/AdventureDe/LinkIM/group/handler"
+	"github.com/AdventureDe/LinkIM/group/repo"
+	"github.com/AdventureDe/LinkIM/group/router"
+	"github.com/AdventureDe/LinkIM/group/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )

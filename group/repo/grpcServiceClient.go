@@ -4,7 +4,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	userpb "github.com/AdventureDe/tempName/api/user"
+	userpb "github.com/AdventureDe/LinkIM/api/user"
 )
 
 type groupService struct {

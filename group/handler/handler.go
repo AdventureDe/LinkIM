@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"github.com/AdventureDe/tempName/group/service"
+	"github.com/AdventureDe/LinkIM/group/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )

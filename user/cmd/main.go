@@ -4,12 +4,12 @@ import (
 	"log"
 	"net"
 
-	userpb "github.com/AdventureDe/tempName/api/user"
-	"github.com/AdventureDe/tempName/user/config"
-	"github.com/AdventureDe/tempName/user/handler"
-	"github.com/AdventureDe/tempName/user/repo"
-	"github.com/AdventureDe/tempName/user/router"
-	"github.com/AdventureDe/tempName/user/service"
+	userpb "github.com/AdventureDe/LinkIM/api/user"
+	"github.com/AdventureDe/LinkIM/user/config"
+	"github.com/AdventureDe/LinkIM/user/handler"
+	"github.com/AdventureDe/LinkIM/user/repo"
+	"github.com/AdventureDe/LinkIM/user/router"
+	"github.com/AdventureDe/LinkIM/user/service"
 	"google.golang.org/grpc"
 
 	"github.com/gin-contrib/cors"

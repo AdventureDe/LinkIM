@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/AdventureDe/tempName/message/repo"
-	"github.com/AdventureDe/tempName/message/service"
+	"github.com/AdventureDe/LinkIM/message/repo"
+	"github.com/AdventureDe/LinkIM/message/service"
 
 	"github.com/gin-gonic/gin"
 )

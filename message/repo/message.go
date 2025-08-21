@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/AdventureDe/tempName/message/repo/model"
+	"github.com/AdventureDe/LinkIM/message/repo/model"
 
-	userpb "github.com/AdventureDe/tempName/api/user"
+	userpb "github.com/AdventureDe/LinkIM/api/user"
 	"gorm.io/gorm"
 )
 

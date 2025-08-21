@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	userpb "github.com/AdventureDe/tempName/api/user"
-	"github.com/AdventureDe/tempName/group/repo/model"
+	userpb "github.com/AdventureDe/LinkIM/api/user"
+	"github.com/AdventureDe/LinkIM/group/repo/model"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

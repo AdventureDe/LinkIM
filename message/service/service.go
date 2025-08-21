@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/AdventureDe/tempName/message/repo"
+	"github.com/AdventureDe/LinkIM/message/repo"
 )
 
 type MessageService struct {

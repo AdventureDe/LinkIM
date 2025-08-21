@@ -5,8 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"github.com/AdventureDe/tempName/user/repo"
-	"github.com/AdventureDe/tempName/user/service"
+	"github.com/AdventureDe/LinkIM/user/repo"
+	"github.com/AdventureDe/LinkIM/user/service"
 
 	"github.com/gin-gonic/gin"
 )

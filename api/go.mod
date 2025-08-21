@@ -1,4 +1,4 @@
-module github.com/AdventureDe/tempName/api
+module github.com/AdventureDe/LinkIM/api
 
 go 1.24.5
 

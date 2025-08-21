@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/AdventureDe/tempName/group/repo"
+	"github.com/AdventureDe/LinkIM/group/repo"
 	"github.com/google/uuid"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	userpb "github.com/AdventureDe/tempName/api/user"
+	userpb "github.com/AdventureDe/LinkIM/api/user"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

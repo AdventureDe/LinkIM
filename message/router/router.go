@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/AdventureDe/tempName/message/handler"
+	"github.com/AdventureDe/LinkIM/message/handler"
 
 	"github.com/gin-gonic/gin"
 )
