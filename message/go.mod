@@ -1,9 +1,9 @@
-module github.com/AdventureDe/tempName/message
+module github.com/AdventureDe/LinkIM/message
 
 go 1.24.5
 
 require (
-	github.com/AdventureDe/tempName/api v0.0.0
+	github.com/AdventureDe/LinkIM/api v0.0.0
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/redis/v8 v8.11.5
@@ -12,7 +12,7 @@ require (
 	google.golang.org/grpc v1.75.0 
 )
 
-replace github.com/AdventureDe/tempName/api => ../api
+replace github.com/AdventureDe/LinkIM/api => ../api
 
 require (
 	github.com/bytedance/sonic v1.13.3 // indirect
