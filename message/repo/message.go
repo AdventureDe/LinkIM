@@ -363,13 +363,14 @@ func (r *messageRepo) GetConversationsFromDB(ctx context.Context, userID int64) 
 	// 4. 拼接 DBConversation
 	for _, c := range conversations {
 		peerID := int64(0)
-		if c.Thread.Type == 1 { // 单聊
+		switch c.Thread.Type {
+		case 1: // 单聊
 			if c.Thread.PeerA != nil && *c.Thread.PeerA != userID {
 				peerID = *c.Thread.PeerA
 			} else if c.Thread.PeerB != nil && *c.Thread.PeerB != userID {
 				peerID = *c.Thread.PeerB
 			}
-		} else if c.Thread.Type == 2 { // 群聊
+		case 2: // 群聊
 			if c.Thread.GroupID != nil {
 				peerID = *c.Thread.GroupID
 			}

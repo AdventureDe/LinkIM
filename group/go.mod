@@ -1,4 +1,4 @@
-module github.com/AdventureDe/tempName/message
+module github.com/AdventureDe/tempName/group
 
 go 1.24.5
 
@@ -7,9 +7,10 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/redis/v8 v8.11.5
+	github.com/google/uuid v1.6.0
+	google.golang.org/grpc v1.75.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.1
-	google.golang.org/grpc v1.75.0 
 )
 
 replace github.com/AdventureDe/tempName/api => ../api
