@@ -13,8 +13,6 @@ require (
 	gorm.io/gorm v1.30.1
 )
 
-replace github.com/AdventureDe/LinkIM/api => ../api
-
 require (
 	github.com/bytedance/sonic v1.13.3 // indirect
 	github.com/bytedance/sonic/loader v0.2.4 // indirect

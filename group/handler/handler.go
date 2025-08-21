@@ -89,7 +89,7 @@ func (h *GroupHandler) PromoteToAdmin(c *gin.Context) {
 	var input struct {
 		GroupID    uuid.UUID `json:"group_id"`
 		ExecutorID int64     `json:"executor_id"`
-		UserID     int64     `json:"user_ids"`
+		UserID     int64     `json:"user_id"`
 		Platform   int       `json:"platform"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -111,7 +111,7 @@ func (h *GroupHandler) TransferGroupOwner(c *gin.Context) {
 	var input struct {
 		GroupID    uuid.UUID `json:"group_id"`
 		ExecutorID int64     `json:"executor_id"`
-		UserID     int64     `json:"user_ids"`
+		UserID     int64     `json:"user_id"`
 		Platform   int       `json:"platform"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -133,7 +133,7 @@ func (h *GroupHandler) DemotedToMember(c *gin.Context) {
 	var input struct {
 		GroupID    uuid.UUID `json:"group_id"`
 		ExecutorID int64     `json:"executor_id"`
-		UserID     int64     `json:"user_ids"`
+		UserID     int64     `json:"user_id"`
 		Platform   int       `json:"platform"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {

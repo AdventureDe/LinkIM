@@ -8,6 +8,7 @@ import (
 	"github.com/AdventureDe/LinkIM/group/repo"
 	"github.com/AdventureDe/LinkIM/group/router"
 	"github.com/AdventureDe/LinkIM/group/service"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -27,7 +28,7 @@ func main() {
 	}
 	defer repo.CloseRedis()
 	//grpc
-	m, err := repo.NewGroupService("localhost:50051") //镜像需要改为user-service
+	m, err := repo.NewGroupService("localhost:50051") // 镜像需要改为user-service
 	if err != nil {
 		log.Fatalf("Fail to initialize Grpc:%v", err)
 	}
@@ -35,7 +36,7 @@ func main() {
 	r := gin.Default()
 	r.Use(cors.New(config.CorsConfig))
 
-	groupRepo := repo.NewGroupRepo(db,m)
+	groupRepo := repo.NewGroupRepo(db, m)
 	groupRedis := repo.NewGroupRedis(rdb)
 	groupService := service.NewGroupService(groupRepo, groupRedis)
 	groupHandler := handler.NewGroupHandler(groupService)

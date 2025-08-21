@@ -245,7 +245,7 @@ func (r *groupRepo) TransferGroupOwner(ctx context.Context, groupid uuid.UUID,
 		// 查询目标用户，并加行锁，确保不会被别的事务同时修改
 		var target model.GroupMember
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id", "role").
+			Select("role").
 			Where("group_id = ? AND user_id = ?", groupid, userid).
 			First(&target).Error; err != nil {
 			return fmt.Errorf("target not in group: %w", err)
@@ -405,7 +405,7 @@ func (r *groupRepo) GetGroupAvatar(ctx context.Context, groupid uuid.UUID) (gas 
 	err = r.db.WithContext(ctx).Model(&model.GroupMember{}).
 		Select("user_id").
 		Where("group_id = ?", groupid).
-		Order("join_time DESC").
+		Order("join_time ASC").
 		Limit(9).
 		Find(&userids).Error
 
@@ -435,6 +435,7 @@ func (r *groupRepo) GetGroupAvatar(ctx context.Context, groupid uuid.UUID) (gas 
 		GroupId:  groupid,
 		UserInfo: res,
 	}
+
 	return
 }
 

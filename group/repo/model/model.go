@@ -40,7 +40,7 @@ type GroupMember struct {
 	GroupID  uuid.UUID `gorm:"type:uuid;primaryKey"` // 复合主键
 	UserID   int64     `gorm:"primaryKey;index"`
 	Role     GroupRole `gorm:"type:group_role;not null;default:'member'"`
-	JoinTime time.Time `gorm:"autoCreateTime"`
+	JoinTime time.Time `gorm:"column:join_time;autoCreateTime"`
 	Nickname string    `gorm:"type:varchar(50)"`
 	IsOwner  bool      `gorm:"not null;default:false"`
 }
