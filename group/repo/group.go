@@ -2,7 +2,9 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	userpb "github.com/AdventureDe/LinkIM/api/user"
 	"github.com/AdventureDe/LinkIM/group/repo/model"
@@ -16,10 +18,23 @@ type GroupAvatarSet struct {
 	UserInfo []*UserInfo
 }
 
+type GroupMember struct {
+	UserID   int64
+	Role     model.GroupRole
+	Nickname string
+	JoinTime time.Time
+}
+
 type UserInfo struct {
 	UserID   int64  `json:"user_id"`
 	Nickname string `json:"nickname"`
 	Avatar   string `json:"avatar"`
+}
+
+type GroupInfo struct {
+	GroupID   uuid.UUID `gorm:"column:id"`
+	GroupName string    `gorm:"column:name"`
+	Avatar    string    `gorm:"column:avatar"`
 }
 
 type GroupRepo interface {
@@ -34,7 +49,9 @@ type GroupRepo interface {
 	UpdateGroupName(ctx context.Context, groupID uuid.UUID, executorID int64, newGroupName string) error
 	GetGroupName(ctx context.Context, groupID uuid.UUID) (string, error)
 	GetGroupAvatar(ctx context.Context, groupID uuid.UUID) (*GroupAvatarSet, error)
+	GetGroupInfos(ctx context.Context, groupID uuid.UUIDs) ([]*GroupInfo, error)
 	UpdateSelfName(ctx context.Context, groupID uuid.UUID, userID int64, newName string) error
+	GetGroupMembers(ctx context.Context, groupID uuid.UUID) ([]GroupMember, error)
 }
 
 type groupRepo struct {
@@ -439,6 +456,21 @@ func (r *groupRepo) GetGroupAvatar(ctx context.Context, groupid uuid.UUID) (gas 
 	return
 }
 
+// for grpc
+func (r *groupRepo) GetGroupInfos(ctx context.Context, groupIDs uuid.UUIDs) ([]*GroupInfo, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	groupInfos := make([]*GroupInfo, 0, len(groupIDs))
+	if err := r.db.WithContext(ctx).Model(&model.Group{}).
+		Select("id,name,avatar").
+		Where("id IN ?", groupIDs).
+		Find(&groupInfos).Error; err != nil {
+		return nil, err
+	}
+	return groupInfos, nil
+}
+
 func (r *groupRepo) UpdateSelfName(ctx context.Context, groupid uuid.UUID, userid int64, newname string) error {
 	if len(newname) == 0 || len(newname) > 64 {
 		return fmt.Errorf("invalid nickname length")
@@ -454,4 +486,22 @@ func (r *groupRepo) UpdateSelfName(ctx context.Context, groupid uuid.UUID, useri
 		return fmt.Errorf("user not found in group")
 	}
 	return nil
+}
+
+var ErrInvalidGroup = errors.New("invalid group")
+
+func (r *groupRepo) GetGroupMembers(ctx context.Context, groupID uuid.UUID) ([]GroupMember, error) {
+	var members []GroupMember
+	if err := r.db.WithContext(ctx).
+		Model(&model.GroupMember{}).
+		Where("group_id = ?", groupID).
+		Find(&members).Error; err != nil {
+		return nil, err
+	}
+
+	if len(members) <= 2 {
+		return nil, ErrInvalidGroup
+	}
+
+	return members, nil
 }

@@ -1,38 +1,42 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // 逻辑会话（Thread）
 type Thread struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement"`
-	Type      int16     `gorm:"not null"` // 1=single, 2=group
-	GroupID   *int64    `gorm:"index"`    // 群聊ID（如果是群聊）
-	PeerA     *int64    `gorm:"index"`    // 单聊 A
-	PeerB     *int64    `gorm:"index"`    // 单聊 B
+	Type      int16     `gorm:"not null"`        // 1=single, 2=group
+	GroupID   uuid.UUID `gorm:"type:uuid;index"` // 群聊ID（如果是群聊） 显式指定类型 uuid
+	PeerA     *int64    `gorm:"index"`           // 单聊 A
+	PeerB     *int64    `gorm:"index"`           // 单聊 B
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
 // 用户会话条目（Conversation）
 type Conversation struct {
 	ID            int64     `gorm:"primaryKey;autoIncrement"`
-	OwnerID       int64     `gorm:"not null;index"` // 会话所属用户
-	ThreadID      int64     `gorm:"not null;index"` // 关联 Thread
-	Thread        Thread    `gorm:"foreignKey:ThreadID;constraint:OnDelete:CASCADE"`
-	LastMessageID *int64    `gorm:"index"` // 最近一条消息
+	OwnerID       int64     `gorm:"not null;index"`                                  // 会话所属用户
+	ThreadID      int64     `gorm:"not null;index"`                                  // 关联 Thread
+	Thread        Thread    `gorm:"foreignKey:ThreadID;constraint:OnDelete:CASCADE"` //用preload 懒加载
+	LastMessageID *int64    `gorm:"index"`                                           // 最近一条消息
 	UnreadCount   int       `gorm:"default:0"`
 	Pinned        bool      `gorm:"default:false"`
 	Mute          bool      `gorm:"default:false"`
 	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
-	IsDeleted     bool      `gorm:"is_deleted"`
+	IsDeleted     bool      `gorm:"default:false"`
 	// 保证每个用户同一个 thread 只会有一条记录
 	// UNIQUE(owner_id, thread_id) -> gorm 里用 index+uniqueConstraint
 }
 
 // 消息（Message）
 type Message struct {
-	ID       int64 `gorm:"primaryKey;autoIncrement"`
-	ThreadID int64 `gorm:"not null;index"`
-	//Thread       Thread    `gorm:"foreignKey:ThreadID;constraint:OnDelete:CASCADE"`
+	ID           int64     `gorm:"primaryKey;autoIncrement"`
+	ThreadID     int64     `gorm:"not null;index"`
+	Thread       Thread    `gorm:"foreignKey:ThreadID;constraint:OnDelete:CASCADE"` //用preload 懒加载
 	SenderID     int64     `gorm:"not null;index"`
 	Kind         int16     `gorm:"not null"` // 消息类型 1. text 2. image 3. file
 	Content      string    `gorm:"type:text;not null"`

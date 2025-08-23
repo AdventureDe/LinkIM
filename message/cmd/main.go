@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -28,18 +29,22 @@ func main() {
 	}
 	defer repo.CloseRedis()
 	//grpc
-	m, err := repo.NewMessageService("localhost:50051") //镜像需要改为user-service
+	m, err := repo.NewMessageService("localhost:50051", "localhost:50053") //镜像需要改为user-service,group-service
 	if err != nil {
 		log.Fatalf("Fail to initialize Grpc:%v", err)
 	}
 	defer m.Close()
-
+	//logger
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync() // flush buffer, 避免丢日志
 	r := gin.Default()
 	r.Use(cors.New(config.CorsConfig))
 
 	messageRepo := repo.NewMessageRepo(db, m)
-	messageRedis := repo.NewMessageRedis(rdb)
-	messageService := service.NewMessageService(messageRepo, messageRedis)
+	messageService := service.NewMessageService(messageRepo, rdb, logger)
 	messageHandler := handler.NewMessageHandler(messageService)
 	router.SetMessageRouter(r, messageHandler)
 	//

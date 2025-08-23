@@ -2,6 +2,7 @@ package repo
 
 import (
 	"log"
+
 	"github.com/AdventureDe/LinkIM/message/repo/model"
 
 	"gorm.io/driver/postgres"
@@ -28,7 +29,10 @@ func InitDB() (*gorm.DB, error) {
 // autoMigrate 自动迁移所有模型
 func autoMigrate() {
 	err := DB.AutoMigrate(
+		&model.Thread{},
+		&model.Conversation{},
 		&model.Message{},
+		&model.MessageStatus{},
 	)
 	if err != nil {
 		log.Fatal("数据库迁移失败：", err)

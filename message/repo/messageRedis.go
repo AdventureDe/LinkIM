@@ -1,16 +1,36 @@
 package repo
 
-import "github.com/go-redis/redis/v8"
+// import (
+//     "context"
+//     "time"
 
-type MessageRedis interface {
-}
+//     "github.com/go-redis/redis/v8"
+// )
 
-type messageRedis struct {
-	redis *redis.Client
-}
+// type MessageRedis interface {
+//     Get(ctx context.Context, key string) *redis.StringCmd
+//     Set(ctx context.Context, key string, val interface{}, exp time.Duration) *redis.StatusCmd
+//     Del(ctx context.Context, keys ...string) *redis.IntCmd
+// }
 
-func NewMessageRedis(r *redis.Client) MessageRedis {
-	return &messageRedis{
-		redis: r,
-	}
-}
+// type messageRedis struct {
+//     client *redis.Client
+// }
+
+// func NewMessageRedis(r *redis.Client) MessageRedis {
+//     return &messageRedis{
+//         client: r,
+//     }
+// }
+
+// func (m *messageRedis) Get(ctx context.Context, key string) *redis.StringCmd {
+//     return m.client.Get(ctx, key)
+// }
+
+// func (m *messageRedis) Set(ctx context.Context, key string, val interface{}, exp time.Duration) *redis.StatusCmd {
+//     return m.client.Set(ctx, key, val, exp)
+// }
+
+// func (m *messageRedis) Del(ctx context.Context, keys ...string) *redis.IntCmd {
+//     return m.client.Del(ctx, keys...)
+// }

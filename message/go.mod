@@ -7,10 +7,13 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-redis/redis/v8 v8.11.5
+	github.com/google/uuid v1.6.0
+	google.golang.org/grpc v1.75.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.1
-	google.golang.org/grpc v1.75.0 
 )
+
+replace github.com/AdventureDe/LinkIM/api => ../api
 
 require (
 	github.com/bytedance/sonic v1.13.3 // indirect
@@ -40,6 +43,8 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/arch v0.18.0 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect

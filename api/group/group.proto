@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package group;
+
+option go_package = "github.com/AdventureDe/LinkIM/api/group;grouppb";
+
+// 群组相关服务
+service GroupService {
+  // 获取指定群组的成员列表
+  rpc ListGroupMembers (ListGroupMembersRequest) returns (ListGroupMembersResponse);
+  rpc ListGroupInfos (ListGroupInfosRequest) returns (ListGroupInfosResponse);
+}
+
+// 请求：获取群组成员
+message ListGroupMembersRequest {
+  // 群组 ID（UUID 格式，建议用 string 传输）
+  string group_id = 1;
+}
+
+// 请求：获取群组信息
+message ListGroupInfosRequest {
+  repeated string group_id = 1;
+}
+
+// 群成员信息
+message GroupMember {
+  int64 user_id = 1;  // 用户 ID
+  Role role = 2;      // 成员角色
+  string nickname = 3; //用户群中昵称
+  string join_time = 4;
+}
+
+// 成员角色枚举
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_MEMBER      = 1;
+  ROLE_ADMIN       = 2;
+  ROLE_OWNER       = 3;
+}
+
+message GroupInfo {
+  string group_id = 1;
+  string group_name = 2;
+  string avatar = 3;
+}
+
+// 响应：群组成员列表
+message ListGroupMembersResponse {
+  string group_id = 1;                // 群组 ID
+  repeated GroupMember members = 2;   // 成员列表
+}
+
+message ListGroupInfosResponse {
+    repeated GroupInfo groups = 1;
+}
+//protoc --go_out=paths=source_relative:. --go-grpc_out=paths=source_relative:. api/group/group.proto

@@ -11,6 +11,7 @@ import (
 	"github.com/AdventureDe/LinkIM/user/router"
 	"github.com/AdventureDe/LinkIM/user/service"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -61,11 +62,14 @@ func main() {
 	grpcServer := grpc.NewServer()
 	userServer := repo.NewUserServiceServer(userRepo) //放入repo
 	userpb.RegisterUserServiceServer(grpcServer, userServer)
-
-	log.Println("UserService gRPC listening on :50051")
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+	reflection.Register(grpcServer)
+	// grpc 服务器
+	go func() { //使用go routine 并行启动服务器
+		log.Println("UserService gRPC listening on :50051")
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("failed to serve gRPC: %v", err)
+		}
+	}()
 
 	// 启动 HTTP 服务
 	log.Printf("User service started at http://localhost:%d", cfg.Port)

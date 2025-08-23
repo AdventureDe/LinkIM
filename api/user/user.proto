@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package user;
 
-option go_package = "github.com/AdventureDe/tempName/api/user;userpb";
+option go_package = "github.com/AdventureDe/LinkIM/api/user;userpb";
 
 
 service UserService {
@@ -11,7 +11,7 @@ service UserService {
 }
 
 message GetUserInfosRequest {
-  repeated int64 user_ids = 1;
+  repeated int64 user_ids = 1;//repeated代表的是数组/切片 查多个用户的信息
 }
 
 message UserInfo {
