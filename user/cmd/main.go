@@ -22,57 +22,61 @@ import (
 // cd cmd      |  go run main.go
 func main() {
 	cfg := config.Load()
-	db, err := repo.InitDB()
+
+	// 1. 初始化数据库 (传入动态 Host)
+	db, err := repo.InitDB(cfg.DBHost)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	db = db.Debug()
 	defer repo.CloseDB()
 
-	rdb, err := repo.InitRedis()
+	// 2. 初始化 Redis (传入动态 Host)
+	rdb, err := repo.InitRedis(cfg.RedisHost)
 	if err != nil {
 		log.Fatalf("Failed to initialize Redis: %v", err)
 	}
 	defer repo.CloseRedis()
 
-	// grpc 服务器
+	// 3. gRPC 服务器监听配置 (对外提供服务，端口保持写死或移入 cfg 均可)
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	// 创建Gin引擎
+	// 4. 创建 Gin 引擎并配置 CORS
 	r := gin.Default()
-
-	// 配置CORS（更安全的配置）
 	r.Use(cors.New(config.CorsConfig))
 
-	// 初始化仓库和服务
+	// 5. 初始化核心架构层
 	userRepo := repo.NewUserRepo(db)
 	userRepoRedis := repo.NewUserRedis(rdb)
-	//------
+
 	userService := service.NewUserService(userRepo, userRepoRedis)
 	userHandler := handler.NewUserHandler(userService)
 	router.SetupRouter(r, userHandler)
 	router.SetupFriendRouter(r, userHandler)
+
 	userServiceWithRedis := service.NewVerificationService(userRepoRedis)
 	userHandlerWithRedis := handler.NewVerificationHandler(userServiceWithRedis)
 	router.SetupVerificationRouter(r, userHandlerWithRedis)
-	// 初始化grpc
+
+	// 6. 初始化并注册 gRPC 服务
 	grpcServer := grpc.NewServer()
-	userServer := repo.NewUserServiceServer(userRepo) //放入repo
+	userServer := repo.NewUserServiceServer(userRepo)
 	userpb.RegisterUserServiceServer(grpcServer, userServer)
 	reflection.Register(grpcServer)
-	// grpc 服务器
-	go func() { //使用go routine 并行启动服务器
+
+	// 7. 并发启动 gRPC 服务器
+	go func() {
 		log.Println("UserService gRPC listening on :50051")
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Fatalf("failed to serve gRPC: %v", err)
 		}
 	}()
 
-	// 启动 HTTP 服务
-	log.Printf("User service started at http://localhost:%d", cfg.Port)
+	// 8. 启动 HTTP 服务
+	log.Printf("User service started at http://0.0.0.0:%d", cfg.Port)
 	if err := r.Run(cfg.Addr()); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

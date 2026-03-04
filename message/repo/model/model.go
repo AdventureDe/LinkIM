@@ -8,12 +8,12 @@ import (
 
 // 逻辑会话（Thread）
 type Thread struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement"`
-	Type      int16     `gorm:"not null"`        // 1=single, 2=group
-	GroupID   uuid.UUID `gorm:"type:uuid;index"` // 群聊ID（如果是群聊） 显式指定类型 uuid
-	PeerA     *int64    `gorm:"index"`           // 单聊 A
-	PeerB     *int64    `gorm:"index"`           // 单聊 B
-	CreatedAt time.Time `gorm:"autoCreateTime"`
+	ID        int64      `gorm:"primaryKey;autoIncrement"`
+	Type      int16      `gorm:"not null"`        // 1=single, 2=group
+	GroupID   *uuid.UUID `gorm:"type:uuid;index"` // 群聊ID（如果是群聊） 显式指定类型 uuid
+	PeerA     *int64     `gorm:"index"`           // 单聊 A
+	PeerB     *int64     `gorm:"index"`           // 单聊 B
+	CreatedAt time.Time  `gorm:"autoCreateTime"`
 }
 
 // 用户会话条目（Conversation）
@@ -34,7 +34,8 @@ type Conversation struct {
 
 // 消息（Message）
 type Message struct {
-	ID           int64     `gorm:"primaryKey;autoIncrement"`
+	MsgID        int64     `gorm:"column:id;primaryKey;not null"`
+	SeqID        int64     `gorm:"column:seq_id;not null;index"`
 	ThreadID     int64     `gorm:"not null;index"`
 	Thread       Thread    `gorm:"foreignKey:ThreadID;constraint:OnDelete:CASCADE"` //用preload 懒加载
 	SenderID     int64     `gorm:"not null;index"`

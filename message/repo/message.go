@@ -80,9 +80,9 @@ type GroupInfo struct {
 }
 
 type MessageRepo interface {
-	SendMessageToSingle(ctx context.Context, senderid int64, targetid int64,
+	SendMessageToSingle(ctx context.Context, message_id, seq_id, senderid, targetid int64,
 		text string) (lastMsgId *int64, err error)
-	SendMessageToGroup(ctx context.Context, senderID int64, groupID uuid.UUID,
+	SendMessageToGroup(ctx context.Context, message_id, seq_id, senderID int64, groupID uuid.UUID,
 		text string) (lastMsgId *int64, err error)
 	GetConversationMessagesSingle(ctx context.Context, senderID, targetID int64,
 		lastMsgID int64, pageSize int) (*ConversationMessages, error)
@@ -114,7 +114,7 @@ func NewMessageRepo(db *gorm.DB, m *messageService) MessageRepo {
 	}
 }
 
-func (r *messageRepo) SendMessageToSingle(ctx context.Context, senderID int64, targetID int64, text string) (lastMsgId *int64, err error) {
+func (r *messageRepo) SendMessageToSingle(ctx context.Context, message_id, seq_id, senderID, targetID int64, text string) (lastMsgId *int64, err error) {
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. 查找或创建 thread (单聊)
 		var thread model.Thread
@@ -139,6 +139,8 @@ func (r *messageRepo) SendMessageToSingle(ctx context.Context, senderID int64, t
 
 		// 2. 插入消息
 		msg := model.Message{
+			MsgID:    message_id,
+			SeqID:    seq_id,
 			ThreadID: thread.ID,
 			SenderID: senderID,
 			Kind:     1, // text
@@ -150,17 +152,17 @@ func (r *messageRepo) SendMessageToSingle(ctx context.Context, senderID int64, t
 
 		// 3. 更新 Conversation
 		// (a) 发送者
-		if err = upsertConversation(tx, senderID, thread.ID, msg.ID, 0); err != nil {
+		if err = upsertConversation(tx, senderID, thread.ID, msg.MsgID, 0); err != nil {
 			return err
 		}
 		// (b) 接收者（未读 +1）
-		if err = upsertConversation(tx, targetID, thread.ID, msg.ID, 1); err != nil {
+		if err = upsertConversation(tx, targetID, thread.ID, msg.MsgID, 1); err != nil {
 			return err
 		}
 
 		// 4. 写 message_status（接收者未读）
 		status := model.MessageStatus{
-			MessageID: msg.ID,
+			MessageID: msg.MsgID,
 			UserID:    targetID,
 			Status:    0, // 未读
 		}
@@ -227,69 +229,91 @@ func GetLastMessageID(tx *gorm.DB, ctx context.Context) (lastMessageID int64, er
 	return
 }
 
-func (r *messageRepo) SendMessageToGroup(ctx context.Context, senderID int64, groupID uuid.UUID, text string) (*int64, error) {
-	// 获取群成员（事务外）
-	// grpc放在事务外面
+// SendMessageToGroup 负责发送群消息
+// 设计原则：
+// 1. 远程调用放事务外，避免长事务
+// 2. 数据写入保证强一致性
+// 3. 批量写入提高性能
+func (r *messageRepo) SendMessageToGroup(
+	ctx context.Context,
+	messageID,
+	seq_id,
+	senderID int64,
+	groupID uuid.UUID,
+	text string,
+) (*int64, error) {
+
+	// ====== 第一阶段：事务外调用远程服务 ======
+	// 获取群成员（避免在事务内调用 gRPC）
 	res, err := r.groupClient.ListGroupMembers(ctx, &grouppb.ListGroupMembersRequest{
 		GroupId: groupID.String(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list group members: %w", err)
+		return nil, fmt.Errorf("list group members failed: %w", err)
 	}
 
-	// 过滤掉自己，生成 gmID slice
-	gmID := make([]int64, 0, len(res.Members))
+	// 过滤发送者本人，生成需要更新未读的用户列表
+	memberIDs := make([]int64, 0, len(res.Members))
 	for _, m := range res.Members {
 		if m.UserId != senderID {
-			gmID = append(gmID, m.UserId)
+			memberIDs = append(memberIDs, m.UserId)
 		}
 	}
 
 	var lastMsgID int64
+
+	// ====== 第二阶段：事务内保证强一致性 ======
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 获取或创建 thread
+
+		// 1️⃣ 获取或创建群会话线程
 		thread, err := getOrCreateGroupThread(tx, groupID)
 		if err != nil {
 			return err
 		}
 
-		// 创建消息
+		// 2️⃣ 创建消息记录
 		msg := model.Message{
+			MsgID:    messageID,
+			SeqID:    seq_id,
 			ThreadID: thread.ID,
 			SenderID: senderID,
-			Kind:     1,
+			Kind:     1, // 1 = 文本消息
 			Content:  text,
 		}
 		if err := tx.Create(&msg).Error; err != nil {
 			return err
 		}
 
-		// 更新会话
-		if err := upsertConversation(tx, senderID, thread.ID, msg.ID, 0); err != nil {
-			return err
-		}
-		if err := upsertConversationsBatch(tx, gmID, thread.ID, msg.ID, 1); err != nil {
+		// 3️⃣ 更新发送者会话（未读数=0）
+		if err := upsertConversation(tx, senderID, thread.ID, msg.MsgID, 0); err != nil {
 			return err
 		}
 
-		// 创建消息状态
-		statuses := make([]model.MessageStatus, 0, len(gmID))
-		for _, id := range gmID {
-			statuses = append(statuses, model.MessageStatus{
-				MessageID: msg.ID,
-				UserID:    id,
-				Status:    0, // 未读
-			})
-		}
-		if err := tx.Create(&statuses).Error; err != nil {
-			return err
+		// 4️⃣ 批量更新群成员会话（未读数+1）
+		if len(memberIDs) > 0 {
+			if err := upsertConversationsBatch(tx, memberIDs, thread.ID, msg.MsgID, 1); err != nil {
+				return err
+			}
 		}
 
-		// 获取最后消息 ID
-		lastMsgID, err = GetLastMessageID(tx, ctx)
-		if err != nil {
-			return err
+		// 5️⃣ 批量创建未读消息状态
+		if len(memberIDs) > 0 {
+			statuses := make([]model.MessageStatus, 0, len(memberIDs))
+			for _, uid := range memberIDs {
+				statuses = append(statuses, model.MessageStatus{
+					MessageID: msg.MsgID,
+					UserID:    uid,
+					Status:    0, // 0 = 未读
+				})
+			}
+
+			if err := tx.Create(&statuses).Error; err != nil {
+				return err
+			}
 		}
+
+		// 6️⃣ 直接使用当前消息ID作为返回值
+		lastMsgID = msg.MsgID
 
 		return nil
 	})
@@ -308,7 +332,7 @@ func getOrCreateGroupThread(tx *gorm.DB, groupID uuid.UUID) (*model.Thread, erro
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		thread = model.Thread{
 			Type:    2,
-			GroupID: groupID,
+			GroupID: &groupID,
 		}
 		if err := tx.Create(&thread).Error; err != nil {
 			return nil, err
@@ -324,54 +348,66 @@ func getOrCreateGroupThread(tx *gorm.DB, groupID uuid.UUID) (*model.Thread, erro
 func (r *messageRepo) WithdrawMessageSingle(ctx context.Context, senderID int64, targetID int64, messageID int64) (lastMessageID int64, err error) {
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var thread model.Thread
-		// 找到对应的单聊线程
+		// 1. 找到对应的单聊线程
 		if err := tx.Where("(peer_a = ? AND peer_b = ?) OR (peer_a = ? AND peer_b = ?)",
 			senderID, targetID, targetID, senderID).
 			First(&thread).Error; err != nil {
 			return err
 		}
 
-		// 查找要撤回的消息
+		// 2. 查找要撤回的消息实体 (注意：主键字段名是 msg_id)
 		var message model.Message
-		// 保证安全性
 		if err := tx.Where("thread_id = ? AND sender_id = ? AND id = ?", thread.ID, senderID, messageID).
 			First(&message).Error; err != nil {
 			return err
 		}
 
-		// 时间限制 查验
+		// 3. 时间限制查验
 		if time.Since(message.CreatedAt) > 3*time.Minute {
 			return errors.New("超过撤回时间限制")
 		}
 
-		// 逻辑撤回：更新 Message 表 IsWithdrawed
+		// 4. 逻辑撤回：更新 Message 表
 		if err := tx.Model(&model.Message{}).
-			Where("id = ?", messageID).
+			Where("msg_id = ?", messageID). // 修正字段名
 			Update("is_withdrawed", true).Error; err != nil {
 			return err
 		}
+
+		// 5. 寻找撤回后的“最新一条有效消息”
 		var lastMsg model.Message
 		err := tx.Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
-			Order("id DESC").
+			Order("seq_id DESC"). // 【核心精髓】利用严格连续的 SeqID 倒序，找出来的绝对是真实的最后一条！
 			First(&lastMsg).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 如果整个会话的消息都被撤回了，会话可能就没有 last message 了
+				// 根据你的业务逻辑，这里可以将 Conversation.last_message_id 置为 NULL 或 0
+				lastMessageID = 0
+			} else {
+				return err
+			}
+		} else {
+			// 保存最后一条消息的雪花 ID
+			lastMessageID = lastMsg.MsgID
 		}
 
-		lastMessageID = lastMsg.ID // 保存最后一条消息 ID
-		// 更新 Conversation.last_message_id
-		// 批量更新会话
-		err = tx.Model(&model.Conversation{}).
-			Where("owner_id = ? AND thread_id = ?", []int64{senderID, targetID}, thread.ID).
-			Update("last_message_id", lastMsg.ID).Error
-		if err != nil {
-			return err
+		// 6. 批量更新会话的 LastMessageID
+		// 修正：切片对应的是 IN 查询
+		if lastMessageID != 0 {
+			err = tx.Model(&model.Conversation{}).
+				Where("owner_id IN ? AND thread_id = ?", []int64{senderID, targetID}, thread.ID).
+				Update("last_message_id", lastMessageID).Error
+			if err != nil {
+				return err
+			}
 		}
+
 		return nil
 	})
 	return
 }
-
 func (r *messageRepo) UnWithdrawMessageSingle(ctx context.Context, senderID, targetID, messageID int64, newtext string) (lastMessageID int64, err error) {
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var thread model.Thread
@@ -396,13 +432,13 @@ func (r *messageRepo) UnWithdrawMessageSingle(ctx context.Context, senderID, tar
 
 		var lastMsg model.Message
 		err := tx.Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
-			Order("id DESC").First(&lastMsg).Error
+			Order("seq_id DESC").First(&lastMsg).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
 		// 处理了没有未撤回消息的情况
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			lastMessageID = lastMsg.ID
+			lastMessageID = lastMsg.MsgID
 		}
 
 		for _, userID := range []int64{senderID, targetID} {
@@ -465,13 +501,13 @@ func (r *messageRepo) WithdrawMessageGroup(ctx context.Context, senderID int64, 
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		lastMessageID = lastMsg.ID
+		lastMessageID = lastMsg.MsgID
 
 		// 一次性更新所有成员的会话
 		if len(mem) > 0 {
 			err = tx.Model(&model.Conversation{}).
 				Where("owner_id IN ? AND thread_id = ?", mem, thread.ID).
-				Update("last_message_id", lastMsg.ID).Error
+				Update("last_message_id", lastMsg.MsgID).Error
 			if err != nil {
 				return err
 			}
@@ -520,7 +556,7 @@ func (r *messageRepo) UnWithdrawMessageGroup(ctx context.Context, senderID int64
 		var lastMsg model.Message
 		if err := tx.Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
 			Order("id DESC").First(&lastMsg).Error; err == nil {
-			lastMessageID = lastMsg.ID
+			lastMessageID = lastMsg.MsgID
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
@@ -552,16 +588,30 @@ func (r *messageRepo) GetConversationMessagesSingle(
 		return nil, err
 	}
 
-	// 2. 查询消息（分页）
+	// 2. 游标转换：把前端传来的雪花 ID (lastMsgID) 翻译成内部的连续序号 (SeqID)
+	var cursorSeqID int64
+	if lastMsgID > 0 {
+		// 去数据库里查这条消息对应的 seq_id
+		if err := db.Model(&model.Message{}).
+			Where("thread_id = ? AND id = ?", thread.ID, lastMsgID).
+			Pluck("seq_id", &cursorSeqID).Error; err != nil {
+			return nil, fmt.Errorf("invalid cursor message id: %w", err)
+		}
+	}
+
+	// 3. 查询消息（使用 SeqID 进行严格时序分页）
 	messages := make([]*model.Message, 0, pageSize+1)
 	query := db.Model(&model.Message{}).
 		Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
-		Order("id DESC").
+		Order("seq_id DESC"). // 【修改】必须用 seq_id 倒序，保证时序绝对正确
 		Limit(pageSize + 1)
 
-	if lastMsgID > 0 {
-		query = query.Where("id <= ?", lastMsgID) // 游标分页
+	if cursorSeqID > 0 {
+		// 【修改】使用 seq_id < ?
+		// 注意：这里用 `<` 而不是原来的 `<=`，因为正常的下拉刷新不应该把刚才那条基准消息再查出来一遍
+		query = query.Where("seq_id < ?", cursorSeqID)
 	}
+
 	if err := query.Find(&messages).Error; err != nil {
 		return nil, err
 	}
@@ -572,13 +622,13 @@ func (r *messageRepo) GetConversationMessagesSingle(
 		messages = messages[:pageSize] // 丢弃最后一条，保持 pageSize
 	}
 
-	// 3. 获取未读计数
+	// 4. 获取未读计数
 	var unreadCount int
 	_ = db.Model(&model.Conversation{}).
 		Where("owner_id = ? AND thread_id = ?", senderID, thread.ID).
 		Pluck("unread_count", &unreadCount).Error
 
-	// 4. 调用 user-service 获取用户信息
+	// 5. 调用 user-service 获取用户信息
 	userIDs := []int64{senderID, targetID}
 	userResp, err := r.userClient.GetUserInfos(ctx, &userpb.GetUserInfosRequest{
 		UserIds: userIDs,
@@ -587,7 +637,7 @@ func (r *messageRepo) GetConversationMessagesSingle(
 		return nil, fmt.Errorf("fail to get UserInfos: %w", err)
 	}
 
-	// 5. 建立 userMap
+	// 6. 建立 userMap
 	userMap := make(map[int64]UserInfo, len(userResp.Users))
 	for _, u := range userResp.Users {
 		userMap[u.UserId] = UserInfo{
@@ -597,7 +647,7 @@ func (r *messageRepo) GetConversationMessagesSingle(
 		}
 	}
 
-	// 6. 组装返回数据
+	// 7. 组装返回数据
 	messageWithUserInfos := make([]*MessageWithUser, 0, len(messages))
 	for _, m := range messages {
 		mwu := &MessageWithUser{
@@ -624,22 +674,34 @@ func (r *messageRepo) GetConversationMessagesGroup(
 ) (*ConversationGroupMessages, error) {
 	db := r.db.WithContext(ctx)
 
-	// 1. 获取 thread
+	// 1. 获取群聊 thread
 	var thread model.Thread
 	if err := db.Where("group_id = ?", groupID).First(&thread).Error; err != nil {
 		return nil, err
 	}
 
-	// 2. 查询消息（分页）
+	// 2. 游标转换：将外部传递的雪花 MsgID 转换为内部严格连续的 SeqID
+	var cursorSeqID int64
+	if lastMsgID > 0 {
+		if err := db.Model(&model.Message{}).
+			Where("thread_id = ? AND id = ?", thread.ID, lastMsgID).
+			Pluck("seq_id", &cursorSeqID).Error; err != nil {
+			return nil, fmt.Errorf("invalid cursor message id: %w", err)
+		}
+	}
+
+	// 3. 查询消息（分页）：使用 SeqID 保证绝对时序
 	messages := make([]*model.Message, 0, pageSize+1)
 	query := db.Model(&model.Message{}).
 		Where("thread_id = ? AND is_withdrawed = ?", thread.ID, false).
-		Order("id DESC").
+		Order("seq_id DESC"). // 【修改】使用 seq_id 倒序
 		Limit(pageSize + 1)
 
-	if lastMsgID > 0 {
-		query = query.Where("id <= ?", lastMsgID)
+	if cursorSeqID > 0 {
+		// 【修改】使用 seq_id < ? 进行游标分页，完美规避重复数据
+		query = query.Where("seq_id < ?", cursorSeqID)
 	}
+
 	if err := query.Find(&messages).Error; err != nil {
 		return nil, err
 	}
@@ -647,10 +709,10 @@ func (r *messageRepo) GetConversationMessagesGroup(
 	hasMore := false
 	if len(messages) > pageSize {
 		hasMore = true
-		messages = messages[:pageSize]
+		messages = messages[:pageSize] // 丢弃最后一条，保持 pageSize
 	}
 
-	// 3. 查询未读数
+	// 4. 查询未读数
 	var unreadCount int
 	err := db.Model(&model.Conversation{}).
 		Where("owner_id = ? AND thread_id = ?", senderID, thread.ID).
@@ -659,21 +721,25 @@ func (r *messageRepo) GetConversationMessagesGroup(
 		return nil, err
 	}
 
-	// 4. 收集 senderIDs
-	senderIDs := make([]int64, 0, len(messages))
+	// 5. 收集并去重 senderIDs (优化网络开销)
+	senderIDMap := make(map[int64]struct{})
 	for _, m := range messages {
-		senderIDs = append(senderIDs, m.SenderID)
+		senderIDMap[m.SenderID] = struct{}{}
+	}
+	uniqueSenderIDs := make([]int64, 0, len(senderIDMap))
+	for id := range senderIDMap {
+		uniqueSenderIDs = append(uniqueSenderIDs, id)
 	}
 
-	// 5. 调用 user-service 获取用户信息
+	// 6. 调用 user-service 获取用户信息
 	userResp, err := r.userClient.GetUserInfos(ctx, &userpb.GetUserInfosRequest{
-		UserIds: senderIDs,
+		UserIds: uniqueSenderIDs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fail to get user infos: %w", err)
 	}
 
-	// 6. 调用 group-service 获取群昵称
+	// 7. 调用 group-service 获取群昵称 (群聊专属)
 	groupResp, err := r.groupClient.ListGroupMembers(ctx, &grouppb.ListGroupMembersRequest{
 		GroupId: groupID.String(),
 	})
@@ -681,10 +747,10 @@ func (r *messageRepo) GetConversationMessagesGroup(
 		return nil, fmt.Errorf("fail to get group members: %w", err)
 	}
 
-	// 7. 建立查找表
-	userMap := make(map[int64]*UserInfo, len(userResp.Users))
+	// 8. 建立查找表
+	userMap := make(map[int64]UserInfo, len(userResp.Users))
 	for _, u := range userResp.Users {
-		userMap[u.UserId] = &UserInfo{
+		userMap[u.UserId] = UserInfo{ // 直接存值而不是指针，避免后续查空引发 Panic
 			UserID:   u.UserId,
 			Nickname: u.Nickname,
 			Avatar:   u.Avatar,
@@ -696,13 +762,19 @@ func (r *messageRepo) GetConversationMessagesGroup(
 		groupNicknameMap[gm.UserId] = gm.Nickname
 	}
 
-	// 8. 组装返回数据
+	// 9. 组装返回数据 (包含安全防御)
 	messageWithUserInfos := make([]*MessageWithUser, 0, len(messages))
 	for _, m := range messages {
+		// 安全获取用户信息，如果没有拿到，给个默认兜底，防止前端渲染报错
+		uInfo, exists := userMap[m.SenderID]
+		if !exists {
+			uInfo = UserInfo{UserID: m.SenderID, Nickname: "未知用户"}
+		}
+
 		mwu := &MessageWithUser{
 			Message:       *m,
 			GroupNickname: groupNicknameMap[m.SenderID],
-			User:          *userMap[m.SenderID],
+			User:          uInfo,
 		}
 		messageWithUserInfos = append(messageWithUserInfos, mwu)
 	}
@@ -770,7 +842,7 @@ func (r *messageRepo) GetSingleConversationsFromDB(ctx context.Context, userID i
 			return nil, err
 		}
 		for _, m := range msgs {
-			msgMap[m.ID] = &m
+			msgMap[m.MsgID] = &m
 		}
 	}
 
@@ -829,7 +901,7 @@ func (r *messageRepo) GetGroupConversationsFromDB(ctx context.Context, userID in
 			return nil, err
 		}
 		for _, m := range msgs {
-			msgMap[m.ID] = &m
+			msgMap[m.MsgID] = &m
 		}
 	}
 	// 拼接 Conversation
@@ -841,7 +913,7 @@ func (r *messageRepo) GetGroupConversationsFromDB(ctx context.Context, userID in
 		}
 		convs = append(convs, &GroupConversation{
 			ThreadID:    c.ThreadID,
-			GroupID:     groupID,
+			GroupID:     *groupID,
 			LastMessage: lastMsg,
 			UnreadCount: c.UnreadCount,
 			UpdateTime:  c.UpdatedAt,

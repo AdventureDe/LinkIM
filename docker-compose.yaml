@@ -8,10 +8,13 @@ services:
       POSTGRES_USER: hassin
       POSTGRES_DB: project2
       TZ: Asia/Shanghai
+    # 提醒：为了安全，云端建议注释掉本地端口映射，这里暂时保留方便你使用工具看数据
     ports:
       - "5432:5432"
     volumes:
-      - "D:/docker-postgresql:/var/lib/postgresql/data"
+      - "D:/docker-postgresql:/var/lib/postgresql/data" # 部署到云服务器时，请改成 Linux 路径
+    networks:
+      - app-net
 
   redis:
     image: redis:7.2
@@ -21,50 +24,110 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - "D:/docker-redis:/data"
+      - "D:/docker-redis:/data" # 部署到云服务器时，请改成 Linux 路径
     environment:
       TZ: Asia/Shanghai
-      
-  # user-service:
-  #   build:   
-  #     context: .  
-  #     dockerfile: user/Dockerfile
-  #   container_name: user-service
-  #   ports:
-  #     - "50051:50051"
-  #   restart: unless-stopped
+    networks:
+      - app-net
 
-  # message-service:
-  #   build:   
-  #     context: .  
-  #     dockerfile: message/Dockerfile
-  #   container_name: message-service
-  #   depends_on:
-  #     - user-service
-  #   restart: unless-stopped
-    
-#   user:
-#     build:
-#       context: .
-#       dockerfile: Dockerfile
-#     container_name: user-container
-#     restart: unless-stopped
-#     ports:
-#       - "10008:10008"
-#     depends_on:
-#       - postgres
-#       - redis
-#     environment:
-#       - PORT=10008
-#       - DB_HOST=postgres-container
-#       - DB_PORT=5432
-#       - DB_USER=hassin
-#       - DB_PASSWORD=12345678
-#       - DB_NAME=project2
-#       - REDIS_HOST=redis-container
-#       - REDIS_PORT=6379
-#     networks:
-#       - backend-network
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - app-net
 
-# networks:
-#   backend-network:
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:19092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - app-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # User 微服务
+  user-service:
+    build:
+      context: .
+      dockerfile: user/Dockerfile
+    container_name: user-service
+    restart: unless-stopped
+    ports:
+      - "10008:10008"
+      - "50051:50051"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - PORT=10008
+      - DB_HOST=postgres-container
+      - REDIS_HOST=redis-container
+    networks:
+      - app-net
+
+  # Message 微服务
+  message-service:
+    build:
+      context: .
+      dockerfile: message/Dockerfile # 注意：如果你把 Dockerfile 放在了 message 目录下，请加上 message/ 前缀
+    container_name: message-service
+    restart: unless-stopped
+    ports:
+      - "10010:10010"
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    environment:
+      - PORT=10010
+      - DB_HOST=postgres-container
+      - REDIS_HOST=redis-container
+      - KAFKA_HOST=kafka:9092
+    networks:
+      - app-net
+
+  # Group 微服务
+  group-service:
+    build:
+      context: .
+      dockerfile: group/Dockerfile
+    container_name: group-service
+    restart: unless-stopped
+    ports:
+      - "10009:10009"
+    depends_on:
+      - postgres
+      - redis
+      - user-service
+    environment:
+      - PORT=10009
+      - DB_HOST=postgres-container
+      - REDIS_HOST=redis-container
+      - USER_HOST=user-service:50051
+      - KAFKA_HOST=kafka:9092
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge

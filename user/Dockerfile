@@ -1,28 +1,37 @@
-FROM golang:1.24 as builder
+FROM golang:1.24 AS builder
 
 WORKDIR /app
-
-# 国内可以加代理
 ENV GOPROXY=https://goproxy.cn,direct
 
-# 先拷贝 go.mod 和 go.sum
-COPY user/go.mod user/go.sum ./user/
-COPY api/go.mod api/go.sum ./api/
+COPY go.work ./
+COPY go.work.sum ./ 
 
-# 进入 user 目录下载依赖
+COPY group/go.mod ./group/
+COPY api/go.mod ./api/
+COPY message/go.mod ./message/
+COPY user/go.mod ./user/
+
+COPY group/go.sum ./group/
+COPY api/go.sum ./api/
+COPY message/go.sum ./message/
+COPY user/go.sum ./user/
+
 WORKDIR /app/user
 RUN go mod download
 
-# 再拷贝源码
-COPY api/ ../api/
-COPY user/ ./
+WORKDIR /app
+COPY api/ ./api/
+COPY message/ ./message/
+COPY user/ ./user/
+COPY group/ ./group/
 
-# 编译 grpc 服务
-RUN CGO_ENABLED=0 GOOS=linux go build -o user-service ./cmd
+WORKDIR /app/user
+RUN CGO_ENABLED=0 GOOS=linux go build -o user-service ./cmd/main.go
 
-# 运行阶段
 FROM alpine:latest
 WORKDIR /root/
+RUN apk add --no-cache tzdata && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
 COPY --from=builder /app/user/user-service .
-
 CMD ["./user-service"]

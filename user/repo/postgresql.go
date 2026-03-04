@@ -1,7 +1,10 @@
 package repo
 
 import (
+	"fmt"
 	"log"
+
+	"github.com/AdventureDe/LinkIM/message/repo/model"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -9,9 +12,10 @@ import (
 
 var DB *gorm.DB
 
-// InitDB 初始化数据库连接
-func InitDB() (*gorm.DB, error) {
-	dsn := "user=hassin password=12345678 dbname=project2 sslmode=disable"
+// InitDB 初始化数据库连接，接收动态 host 参数
+func InitDB(host string) (*gorm.DB, error) {
+	// 将 host 拼接到 DSN 字符串中
+	dsn := fmt.Sprintf("host=%s user=hassin password=12345678 dbname=project2 port=5432 sslmode=disable TimeZone=Asia/Shanghai", host)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
@@ -27,7 +31,10 @@ func InitDB() (*gorm.DB, error) {
 // autoMigrate 自动迁移所有模型
 func autoMigrate() {
 	err := DB.AutoMigrate(
-		&User{},
+		&model.Thread{},
+		&model.Conversation{},
+		&model.Message{},
+		&model.MessageStatus{},
 	)
 	if err != nil {
 		log.Fatal("数据库迁移失败：", err)

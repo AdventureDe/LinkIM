@@ -54,7 +54,7 @@ type UserInfo struct {
 }
 
 type GroupInfo struct {
-	GroupID   uuid.UUID `json:"group_id"`
-	GroupName string    `json:"group_name"`
-	Avatar    string    `json:"avatar"`
+	GroupID   *uuid.UUID `json:"group_id"`
+	GroupName string     `json:"group_name"`
+	Avatar    string     `json:"avatar"`
 }
